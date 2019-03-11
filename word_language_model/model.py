@@ -1,5 +1,31 @@
 import torch.nn as nn
 
+def Binarize(tensor,quant_mode='det'):
+    if quant_mode=='det':
+        return tensor.sign()
+    else:
+        return tensor.add_(1).div_(2).add_(torch.rand(tensor.size()).add(-0.5)).clamp_(0,1).round().mul_(2).add_(-1)
+
+class BinarizeLinear(nn.Linear):
+
+    def __init__(self, *kargs, **kwargs):
+        super(BinarizeLinear, self).__init__(*kargs, **kwargs)
+
+    def forward(self, input):
+
+        if input.size(1) != 784:
+            input.data=Binarize(input.data)
+        if not hasattr(self.weight,'org'):
+            self.weight.org=self.weight.data.clone()
+        self.weight.data=Binarize(self.weight.org)
+        out = nn.functional.linear(input, self.weight)
+        if not self.bias is None:
+            self.bias.org=self.bias.data.clone()
+            out += self.bias.view(1, -1).expand_as(out)
+
+        return out
+
+
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
 
@@ -9,6 +35,7 @@ class RNNModel(nn.Module):
         self.encoder = nn.Embedding(ntoken, ninp)
         if rnn_type in ['LSTM', 'GRU']:
             self.rnn = getattr(nn, rnn_type)(ninp, nhid, nlayers, dropout=dropout)
+            self.binLayer = BinarizeLinear(nhid, nhid)
         else:
             try:
                 nonlinearity = {'RNN_TANH': 'tanh', 'RNN_RELU': 'relu'}[rnn_type]
@@ -44,9 +71,11 @@ class RNNModel(nn.Module):
     def forward(self, input, hidden):
         emb = self.drop(self.encoder(input))
         output, hidden = self.rnn(emb, hidden)
+
+        hidden_bin = self.binLayer(hidden)
         output = self.drop(output)
         decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
-        return decoded.view(output.size(0), output.size(1), decoded.size(1)), hidden
+        return decoded.view(output.size(0), output.size(1), decoded.size(1)), hidden_bin
 
     def init_hidden(self, bsz):
         weight = next(self.parameters())
