@@ -66,9 +66,9 @@ class RNNModel(nn.Module):
         initrange = 0.1
         self.encoder.weight.data.uniform_(-initrange, initrange)
         self.decoder.bias.data.zero_()
-        for binl in self.binLayers:
-            binl.bias.data.zero_()
-            binl.weight.data.uniform_(-initrange, initrange)
+        #for binl in self.binLayers:
+        #    binl.bias.data.zero_()
+        #    binl.weight.data.uniform_(-initrange, initrange)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, input, hidden):
